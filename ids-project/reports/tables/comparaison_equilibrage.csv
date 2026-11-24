@@ -1,0 +1,4 @@
+strategie,f1_macro_moy,f1_macro_std,accuracy_moy,temps_s
+class_weight,0.5616,0.0019,0.8436,393.2
+sous-échantillonnage,0.6395,0.0106,0.9621,102.6
+SMOTE,0.6544,0.0079,0.9631,340.5

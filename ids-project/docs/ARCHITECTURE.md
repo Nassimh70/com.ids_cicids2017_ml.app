@@ -9,7 +9,7 @@ questions possibles du jury.
 | Étape | Script | État |
 |---|---|---|
 | 1. Exploration | `01_exploration.py` | terminée |
-| 2. Prétraitement et déséquilibre | `02_pretraitement.py` | à faire |
+| 2. Prétraitement et déséquilibre | `02_pretraitement.py` | terminée |
 | 3. Sélection de variables | `03_selection.py` | à faire |
 | 4. Modèles et validation croisée | `04_modeles.py` | à faire |
 | 5. Évaluation sur le test | `05_evaluation.py` | à faire |
@@ -110,8 +110,12 @@ flowchart LR
 - **Libellés normalisés** : sans cela, 7 976 lignes partaient dans `AUTRE`.
 - **Doublons pas encore supprimés** : on les a comptés à l'étape 1, on les
   retirera avant le split à l'étape 2 pour éviter la fuite de données.
-- **IP, ports et timestamp** : retirés à l'étape 2. Le modèle doit apprendre un
-  comportement, pas mémoriser une machine ou une heure de capture.
+- **Identifiants et timestamp** : la liste `RISKY_COLUMNS` est appliquée à
+  l'étape 2. Dans la version des CSV fournie ici, ces colonnes ne sont déjà
+  pas présentes (le fichier commence par `Destination Port`) : aucune
+  suppression n'a donc été faite. Le `Destination Port` est gardé car c'est
+  une information disponible en production (service visé), mais son
+  importance sera surveillée aux étapes 3 et 6.
 - **F1 macro et PR-AUC** (plus tard) plutôt que l'accuracy : 80 % des flux sont
   `BENIGN`, donc l'accuracy est trompeuse.
 
@@ -125,6 +129,7 @@ Depuis le dossier du projet :
 ```bash
 pip install -r requirements.txt
 python 01_exploration.py
+python 02_pretraitement.py
 ```
 
 Le script lit les 8 CSV, écrit `data/processed/sample_stratified_5pct.csv`, puis
@@ -225,3 +230,79 @@ Le script se lit de haut en bas.
 5. **Les doublons sont-ils un problème ?** Oui : si la même ligne est en train
    et en test, le score sera gonflé. On les a comptés ici (3,92 %) et on les
    supprimera avant le split à l'étape 2.
+
+---
+
+## Explication du code — étape 2
+
+`02_pretraitement.py` se lit encore de haut en bas, sans fonction compliquée.
+
+1. **Lecture et colonnes** : on relit l'échantillon de l'étape 1. La liste
+   `RISKY_COLUMNS` est appliquée, mais dans les CSV fournis ces colonnes
+   n'existent pas déjà : le script affiche donc `[]`. C'est normal et c'est
+   tracé dans le tableau `resume_pretraitement.csv`. Les 8 colonnes constantes
+   trouvées à l'étape 1 sont retirées.
+2. **Infinis** : `replace([np.inf, -np.inf], np.nan)` transforme les 162 valeurs
+   infinies en `NaN`. L'imputation médiane n'est pas faite ici : elle est dans
+   le pipeline, donc recalculée sur chaque fold d'entraînement.
+3. **Doublons** : `drop_duplicates()` est appelé **avant** `train_test_split()`.
+   C'est le point clé anti-fuite.
+4. **Familles rares** : `Infiltration` (36) et `Heartbleed` (11) sont écrites
+   dans `data/processed/attaques_rares.csv` puis enlevées du jeu de modèle.
+   Avec environ 2 et 7 exemples dans le test, on ne peut pas tirer de
+   conclusion sur leur détection.
+5. **Split** : `train_test_split(..., test_size=0.2, stratify=y,
+   random_state=42)`. Le jeu de test est écrit dans `test.csv` et n'est plus
+   touché jusqu'à l'étape 5.
+6. **Comparaison des équilibrages** : on utilise
+   `imblearn.pipeline.Pipeline` avec `SimpleImputer`, `StandardScaler`, un
+   sampleur, puis `LogisticRegression`. `cross_validate` avec
+   `StratifiedKFold(5)` évalue chaque stratégie. Comme le sampleur fait partie
+   du pipeline, il n'est ajusté que sur les 4/5 d'entraînement de chaque fold.
+7. **Cibles de rééchantillonnage** : imblearn refuse un float pour le
+   multi-classes, donc on donne un dictionnaire. Le sous-échantillonnage
+   ramène `BENIGN` à 20 000 lignes. SMOTE vise 20 % de la taille de `BENIGN`
+   pour chaque classe, avec un plafond de 10 fois la classe d'origine (pour ne
+   pas créer 17 000 faux `Bot` à partir de 78 exemples).
+
+### Résultats réels de l'étape 2
+
+- Après déduplication : **136 032** lignes ; après retrait des 47 lignes rares :
+  **135 985** lignes. Train : **108 788**, test : **27 197**.
+- Classes du train : BENIGN 88 952, DoS 8 040, PortScan 6 070, DDoS 5 121,
+  BruteForce 440, WebAttack 87, Bot 78.
+- Comparaison en CV 5 folds (F1 macro moyen ± écart-type) :
+
+| Stratégie | F1 macro | Accuracy | Temps |
+|---|---:|---:|---:|
+| `class_weight='balanced'` | 0,5616 ± 0,0019 | 0,8436 | 393 s |
+| Sous-échantillonnage | 0,6395 ± 0,0106 | 0,9621 | 103 s |
+| SMOTE | **0,6544 ± 0,0079** | 0,9631 | 341 s |
+
+- L'écart entre SMOTE et le sous-échantillonnage est faible (0,015) et
+  SMOTE est trois fois plus lent : le choix définitif sera fait à l'étape 4
+  avec les autres modèles. Le point important est que **l'accuracy de 0,84
+  du `class_weight` cache un F1 macro de 0,56** : la classe majoritaire
+  domine le score.
+- Fichiers créés : `data/processed/train.csv`, `test.csv`,
+  `attaques_rares.csv`; `reports/tables/resume_pretraitement.csv`,
+  `comparaison_equilibrage.csv`; `reports/figures/comparaison_equilibrage.png`.
+
+## Cinq questions du jury — étape 2
+
+1. **Pourquoi supprimer les doublons avant le split ?** Sinon une ligne
+   identique peut être en train et en test ; le modèle la « connaît » déjà et
+   le score est artificiellement haut. On en a retiré 5 549.
+2. **Pourquoi le sampleur est-il dans le pipeline ?** Parce que dans chaque
+   fold, SMOTE ne doit voir que les 4/5 d'entraînement. Si on rééchantillonnait
+   avant la CV, des points synthétiques calculés à partir du fold de
+   validation fuiraient dans l'entraînement.
+3. **Pourquoi exclure deux familles au lieu de les garder ?** 11 et 36
+   exemples donnent 2 et 7 lignes en test : le F1 par classe serait du bruit.
+   Elles sont conservées dans `attaques_rares.csv` pour l'analyse critique.
+4. **Pourquoi 0,84 d'accuracy avec seulement 0,56 de F1 macro ?** Parce que
+   BENIGN représente 82 % du train : un modèle peut bien prédire la majorité et
+   rater les petites classes. Le F1 macro donne le même poids à chaque classe.
+5. **Pourquoi un dictionnaire pour `sampling_strategy` ?** En multi-classes,
+   imblearn interdit les floats. On fixe donc un effectif cible par classe,
+   avec un plafond pour ne pas synthétiser trop de données rares.

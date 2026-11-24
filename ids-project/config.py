@@ -48,4 +48,7 @@ KEY_FEATURES = ["Flow Duration", "Total Fwd Packets", "Total Length of Fwd Packe
 
 # retirées à l'étape 2 : identifiants ou fuite temporelle
 RISKY_COLUMNS = ["Flow ID", "Source IP", "Destination IP",
-                 "Source Port", "Destination Port", "Timestamp"]
+                 "Source Port", "Timestamp"]
+
+# trop peu d'exemples pour évaluer une classe correctement (36 et 11)
+RARE_FAMILIES = ["Infiltration", "Heartbleed"]

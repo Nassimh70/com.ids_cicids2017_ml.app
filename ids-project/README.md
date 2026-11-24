@@ -19,8 +19,8 @@ Les données sont déjà présentes ici. L'échantillon utilisé par toutes les
 
 ```bash
 pip install -r requirements.txt
-python 01_exploration.py      # étape 1, terminée
-python 02_pretraitement.py    # à créer à l'étape 2
+python 01_exploration.py      # étape 1
+python 02_pretraitement.py    # étape 2
 ...
 ```
 
@@ -50,3 +50,12 @@ ids-project/
 - 3,92 % de doublons, 162 valeurs infinies, 8 colonnes constantes,
   48 paires de variables très corrélées.
 - 10 figures et 6 tableaux générés, sans aucune donnée inventée.
+
+## Résultat de l'étape 2
+
+- Après déduplication : 136 032 lignes ; 47 lignes rares mises de côté ;
+  train 108 788 / test 27 197 (split stratifié 80/20, graine 42).
+- F1 macro en CV 5 folds : class_weight 0,5616 ; sous-échantillonnage 0,6395 ;
+  SMOTE 0,6544. L'accuracy de 0,84 du premier cache un F1 macro de 0,56.
+- Le rééchantillonnage se fait dans le pipeline, donc à l'intérieur de chaque
+  fold ; le jeu de test reste intact jusqu'à l'étape 5.

@@ -1,0 +1,10 @@
+famille,effectif,pourcent
+BENIGN,113655,80.28
+DoS,12633,8.92
+DDoS,6401,4.52
+PortScan,7946,5.61
+BruteForce,692,0.49
+WebAttack,109,0.08
+Bot,98,0.07
+Infiltration,36,0.03
+Heartbleed,11,0.01

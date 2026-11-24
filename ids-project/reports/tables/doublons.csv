@@ -1,0 +1,3 @@
+type,nombre,pourcent
+lignes identiques (features + label),5549,3.92
+"mêmes features, label ignoré",5557,3.92

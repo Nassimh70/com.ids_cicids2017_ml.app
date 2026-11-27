@@ -10,7 +10,7 @@ questions possibles du jury.
 |---|---|---|
 | 1. Exploration | `01_exploration.py` | terminée |
 | 2. Prétraitement et déséquilibre | `02_pretraitement.py` | terminée |
-| 3. Sélection de variables | `03_selection.py` | à faire |
+| 3. Sélection de variables | `03_selection.py` | terminée |
 | 4. Modèles et validation croisée | `04_modeles.py` | à faire |
 | 5. Évaluation sur le test | `05_evaluation.py` | à faire |
 | 6. Analyse critique et déploiement | `06_analyse.py` | à faire |
@@ -130,6 +130,7 @@ Depuis le dossier du projet :
 pip install -r requirements.txt
 python 01_exploration.py
 python 02_pretraitement.py
+python 03_selection.py
 ```
 
 Le script lit les 8 CSV, écrit `data/processed/sample_stratified_5pct.csv`, puis
@@ -306,3 +307,99 @@ Le script se lit de haut en bas.
 5. **Pourquoi un dictionnaire pour `sampling_strategy` ?** En multi-classes,
    imblearn interdit les floats. On fixe donc un effectif cible par classe,
    avec un plafond pour ne pas synthétiser trop de données rares.
+
+---
+
+## Explication du code — étape 3
+
+`03_selection.py` ne touche jamais à `test.csv` : tout est calculé sur
+`train.csv`.
+
+1. **Paires redondantes** : on impute le train, on calcule `corr()` puis le
+   triangle supérieur avec `np.triu(k=1)`. Les 48 paires à plus de 0,95 sont
+   écrites dans `correlations_train.csv`. On ne supprime pas ces colonnes ici :
+   la sélection est faite dans le pipeline pour que chaque fold fasse la sienne.
+2. **Filtre ANOVA** : `SelectKBest(score_func=f_classif, k=k)` classe les
+   variables selon le rapport variance entre classes / variance dans les
+   classes. Le classement complet est dans `top15_features.csv`.
+3. **Embarquée** : `SelectFromModel(RandomForestClassifier(...), max_features=k)`
+   garde les variables que la forêt juge les plus utiles. La forêt sert aussi
+   de modèle final pour noter chaque candidat, avec `class_weight` pour ne pas
+   écraser les petites classes.
+4. **Courbe** : pour k = 5, 10, 15, 25, 40 et 70, on fait une CV à 3 folds et
+   on trace le F1 macro moyen avec son écart-type. Le pipeline contient
+   l'imputation, `VarianceThreshold`, la sélection puis la forêt : tout est
+   recalculé sur les 2/3 d'entraînement de chaque fold.
+5. **Contrôle du port** : `Destination Port` arrive premier des importances RF.
+   On refait la sélection à 15 variables sans cette colonne. Le F1 passe de
+   0,8153 à **0,8398** : le port était donc un raccourci lié au service visé,
+   pas une information robuste. Il est exclu de la sélection finale.
+6. **Choix final** : on garde **15 variables choisies par la forêt**. Avec les
+   70 variables le F1 est de 0,8689, donc on perd 0,029 de F1 mais on divise le
+   nombre de variables par 4,7 et on supprime un biais de service.
+
+### Résultats réels de l'étape 3
+
+| k | ANOVA F1 | Random Forest F1 |
+|---:|---:|---:|
+| 5 | 0,5290 | 0,7856 |
+| 10 | 0,6113 | 0,7915 |
+| 15 | 0,6334 | 0,8153 |
+| 25 | 0,6313 | 0,8124 |
+| 40 | 0,8062 | 0,8079 |
+| 70 | 0,8689 | 0,8689 |
+
+- La méthode embarquée est bien meilleure que l'ANOVA pour peu de variables :
+  0,8153 contre 0,6334 avec 15 variables. À 70 variables, les deux méthodes
+  donnent le même score puisqu'elles gardent tout.
+- Contrôle `Destination Port` : avec 0,8153 ± 0,0222 ; sans 0,8398 ± 0,0389.
+
+Les 15 variables retenues et leur rôle :
+
+| Variable | Signification réseau |
+|---|---|
+| `Init_Win_bytes_backward` | fenêtre TCP initiale dans le sens réponse |
+| `Subflow Fwd Bytes` | octets dans un sous-flux |
+| `Bwd Packet Length Mean` | taille moyenne des paquets reçus |
+| `Average Packet Size` | taille moyenne globale des paquets |
+| `Bwd Packet Length Min` | plus petit paquet reçu |
+| `Packet Length Variance` | variance des tailles de paquets |
+| `Packet Length Mean` | taille moyenne de tous les paquets |
+| `Packet Length Std` | variabilité des tailles de paquets |
+| `min_seg_size_forward` | plus petit segment TCP envoyé |
+| `Init_Win_bytes_forward` | fenêtre TCP initiale dans le sens initial |
+| `Fwd Packet Length Mean` | taille moyenne des paquets envoyés |
+| `Total Length of Fwd Packets` | octets envoyés dans le sens initial |
+| `Fwd IAT Max` | plus long intervalle entre paquets envoyés |
+| `Subflow Bwd Bytes` | octets dans le sous-flux inverse |
+| `Flow Bytes/s` | débit du flux en octets par seconde |
+
+Presque toutes décrivent la **taille, le rythme et la fenêtre TCP** des flux :
+c'est cohérent avec des attaques qui changent le volume (DoS, DDoS) ou le
+comportement de connexion (scan, brute force). Cela dit, aucune variable ne
+décrit le contenu chiffré : les limites du dataset restent entières.
+
+Fichiers créés : `data/processed/selected_features.txt`,
+`reports/tables/correlations_train.csv`, `top15_features.csv`,
+`courbe_selection.csv`, `controle_port.csv`, `selection_finale.csv`, et
+`reports/figures/courbe_selection.png`.
+
+## Cinq questions du jury — étape 3
+
+1. **Pourquoi la sélection est-elle dans le pipeline ?** Pour que l'ANOVA ou
+   la forêt ne voient que les données d'entraînement de chaque fold. Sinon les
+   variables choisies dépendraient du fold de validation.
+2. **Pourquoi la forêt bat-elle l'ANOVA avec peu de variables ?** L'ANOVA ne
+   regarde que la corrélation linéaire avec la cible ; la forêt capte des
+   combinaisons non linéaires de tailles et d'intervalles de paquets.
+3. **Pourquoi ne pas garder les 70 variables puisque c'est le meilleur F1 ?**
+   0,8689 contre 0,8398, soit 0,029 d'écart pour 4,7 fois plus de variables à
+   traiter à chaque inférence. Le compromis est en faveur des 15 variables.
+4. **Pourquoi retirer `Destination Port` alors qu'il est premier ?** C'est une
+   information sur le service visé (port 22, 80...). Le contrôle montre qu'on
+   gagne 0,025 de F1 sans lui : le modèle se concentre sur le comportement du
+   trafic plutôt que sur une correspondance de ports.
+5. **Que prouve la courbe score / nombre de variables ?** Qu'au-delà de 15
+   variables le gain est faible et instable (0,8153 à 15, 0,8124 à 25, 0,8079
+   à 40), puis le score saute à 70 parce qu'on ne sélectionne plus rien.
+

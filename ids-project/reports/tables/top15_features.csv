@@ -1,0 +1,27 @@
+feature,f_anova,importance_rf,rang_anova,rang_rf,signification,dans_selection_finale
+Destination Port,534.8679009462664,0.0970315081264198,29.0,1.0,"port de la machine cible, donc service visé",False
+Init_Win_bytes_backward,282.13946621991704,0.052816646556487726,36.0,2.0,fenêtre TCP initiale dans le sens réponse,True
+Average Packet Size,13745.999232205588,0.038133686527521124,13.0,3.0,taille moyenne globale des paquets,True
+Total Length of Fwd Packets,0.8084273872737797,0.036015496960586674,57.0,4.0,octets envoyés dans le sens initial,True
+Avg Fwd Segment Size,194.6392686182102,0.035113599732460435,40.0,5.0,statistique de flux CICFlowMeter,False
+Fwd Packet Length Mean,194.6392686182102,0.03357248596887222,40.0,6.0,taille moyenne des paquets envoyés,True
+Packet Length Mean,13520.254016211686,0.03094427235250512,14.0,7.0,taille moyenne de tous les paquets,True
+Bwd Packet Length Min,1509.838984775832,0.030067697732612586,26.0,8.0,statistique de flux CICFlowMeter,True
+Subflow Fwd Bytes,0.8113874210318763,0.02485700153718929,56.0,9.0,octets dans un sous-flux,True
+Bwd Header Length,0.023819308049811343,0.024263027726526172,70.0,10.0,taille de l'en-tête TCP reçu,False
+Max Packet Length,15310.981312186845,0.023697890354673824,12.0,11.0,plus grand paquet observé,False
+Flow IAT Std,10154.663045076451,0.02282471337280683,16.0,12.0,variation du temps entre paquets,False
+Avg Bwd Segment Size,20068.681664176194,0.022802697693729286,2.0,13.0,statistique de flux CICFlowMeter,False
+Init_Win_bytes_forward,512.7321662532911,0.022377481469423862,31.0,14.0,fenêtre TCP Initiale dans le sens initial,True
+Total Length of Bwd Packets,0.091458092832338,0.022235524675947582,66.0,15.0,octets reçus en réponse,False
+Bwd Packet Length Mean,20068.681664176194,0.020173290932963897,2.0,16.0,taille moyenne des paquets reçus,True
+Flow IAT Max,15718.408672596577,0.01943210311309475,10.0,17.0,plus long silence entre deux paquets,False
+Packet Length Variance,13157.683728964827,0.018747012653971672,15.0,20.0,variance des tailles de paquets,True
+Bwd Packet Length Max,19426.072689778608,0.016988230848902712,4.0,22.0,statistique de flux CICFlowMeter,False
+Bwd Packet Length Std,20842.2720157714,0.016907495454124427,1.0,23.0,statistique de flux CICFlowMeter,False
+Fwd IAT Max,15660.452942443451,0.014190650976962095,11.0,29.0,statistique de flux CICFlowMeter,True
+Packet Length Std,17092.928893244232,0.010002090539414296,6.0,40.0,variabilité des tailles de paquets,True
+Fwd IAT Std,19315.67062438443,0.009207988538674883,5.0,41.0,statistique de flux CICFlowMeter,False
+Idle Min,17040.869122116477,0.008156957016861185,8.0,43.0,statistique de flux CICFlowMeter,False
+Idle Max,16153.68268332107,0.007373687900000995,9.0,44.0,statistique de flux CICFlowMeter,False
+Idle Mean,17056.45628126166,0.007354223968866266,7.0,45.0,durée moyenne des périodes d'inactivité,False

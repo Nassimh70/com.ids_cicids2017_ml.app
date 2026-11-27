@@ -1,0 +1,2 @@
+methode,nb_variables,f1_moy,variables
+"Random Forest, sans Destination Port",15,0.8398,"Init_Win_bytes_backward, Subflow Fwd Bytes, Bwd Packet Length Mean, Average Packet Size, Bwd Packet Length Min, Packet Length Variance, Packet Length Mean, Packet Length Std, min_seg_size_forward, Init_Win_bytes_forward, Fwd Packet Length Mean, Total Length of Fwd Packets, Fwd IAT Max, Subflow Bwd Bytes, Flow Bytes/s"

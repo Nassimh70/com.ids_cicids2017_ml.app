@@ -21,6 +21,7 @@ Les données sont déjà présentes ici. L'échantillon utilisé par toutes les
 pip install -r requirements.txt
 python 01_exploration.py      # étape 1
 python 02_pretraitement.py    # étape 2
+python 03_selection.py        # étape 3
 ...
 ```
 
@@ -59,3 +60,14 @@ ids-project/
   SMOTE 0,6544. L'accuracy de 0,84 du premier cache un F1 macro de 0,56.
 - Le rééchantillonnage se fait dans le pipeline, donc à l'intérieur de chaque
   fold ; le jeu de test reste intact jusqu'à l'étape 5.
+
+## Résultat de l'étape 3
+
+- Deux méthodes comparées en CV (sélection dans le pipeline) : ANOVA et
+  importance Random Forest. À 15 variables : 0,6334 contre 0,8153 de F1 macro.
+- Les 70 variables donnent 0,8689, mais on garde 15 variables (F1 0,8398) pour
+  une inférence plus rapide et un modèle plus simple.
+- `Destination Port` est exclu après un contrôle : sans lui, le F1 passe de
+  0,8153 à 0,8398 (biais de service).
+- Liste finale dans `data/processed/selected_features.txt`, courbe dans
+  `reports/figures/courbe_selection.png`.

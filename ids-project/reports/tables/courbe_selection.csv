@@ -1,0 +1,13 @@
+methode,nb_variables,f1_moy,f1_std,temps_s
+anova,5,0.529,0.009,15.0
+anova,10,0.6113,0.0051,20.3
+anova,15,0.6334,0.0087,18.1
+anova,25,0.6313,0.0067,20.3
+anova,40,0.8062,0.0038,22.9
+anova,70,0.8689,0.0061,21.7
+random_forest,5,0.7856,0.0045,26.9
+random_forest,10,0.7915,0.0072,34.5
+random_forest,15,0.8153,0.0222,34.4
+random_forest,25,0.8124,0.0072,40.2
+random_forest,40,0.8079,0.0045,40.1
+random_forest,70,0.8689,0.0061,42.7

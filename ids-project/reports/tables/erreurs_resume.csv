@@ -1,0 +1,11 @@
+famille_reelle,famille_predite,nombre
+BENIGN,WebAttack,37
+BENIGN,DoS,14
+DoS,BENIGN,13
+BENIGN,Bot,13
+BENIGN,PortScan,9
+PortScan,DoS,2
+DoS,PortScan,2
+BENIGN,DDoS,1
+Bot,BENIGN,1
+PortScan,BENIGN,1

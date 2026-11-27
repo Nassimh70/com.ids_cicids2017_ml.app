@@ -23,6 +23,8 @@ python 01_exploration.py      # étape 1
 python 02_pretraitement.py    # étape 2
 python 03_selection.py        # étape 3
 python 04_modeles.py          # étape 4
+python 05_evaluation.py       # étape 5
+python 06_analyse.py          # étape 6
 ...
 ```
 
@@ -86,3 +88,26 @@ ids-project/
   `models/final_model.joblib` (SMOTE retiré pour l'inférence), avec
   `models/label_encoder.joblib`.
 - Le test reste intact jusqu'à l'étape 5.
+
+## Résultat de l'étape 5
+
+- Évaluation unique sur les 27 197 flux du test : F1 macro **0,8926**,
+  PR-AUC macro 0,8897, accuracy équilibrée 0,9907. L'accuracy brute (0,9966)
+  est portée par la majorité `BENIGN`.
+- Le test est légèrement au-dessus de la CV (0,8714) : le modèle final a vu
+  tout le train, contre 4/5 à chaque fold.
+- 93 erreurs seulement, mais `WebAttack` (précision 0,37) et `Bot` (0,58)
+  génèrent des fausses alertes sur du trafic normal.
+- Rapport par famille, matrice de confusion et erreurs sauvegardés dans
+  `reports/tables/` et `reports/figures/`.
+
+## Résultat de l'étape 6
+
+- Analyse critique et proposition de déploiement dans `docs/RAPPORT_FINAL.md`.
+- Principales limites : attaques de 2017 scriptées, échantillon 5 %, deux
+  familles absentes (Infiltration 36, Heartbleed 11), fausses alertes sur
+  WebAttack et Bot, et aucun contenu de charge utile.
+- Inférence mesurée à 0,0962 ms par flux sur 27 093 flux du train.
+- Déploiement proposé : capture SPAN/TAP → CICFlowMeter → pipeline joblib →
+  alerte calibrée → SOC, d'abord en observation avec validation humaine.
+

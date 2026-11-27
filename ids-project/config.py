@@ -14,8 +14,9 @@ PROCESSED_DIR = BASE / "data" / "processed"
 FIGURES_DIR = BASE / "reports" / "figures"
 TABLES_DIR = BASE / "reports" / "tables"
 MODELS_DIR = BASE / "models"
+DOCS_DIR = BASE / "docs"
 
-for dossier in (RAW_DIR, PROCESSED_DIR, FIGURES_DIR, TABLES_DIR, MODELS_DIR):
+for dossier in (RAW_DIR, PROCESSED_DIR, FIGURES_DIR, TABLES_DIR, MODELS_DIR, DOCS_DIR):
     dossier.mkdir(parents=True, exist_ok=True)
 
 # 5 % par famille, mais on garde toutes les lignes des familles très rares

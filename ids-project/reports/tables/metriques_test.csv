@@ -1,0 +1,2 @@
+accuracy,balanced_accuracy,f1_macro,f1_pondere,precision_macro,rappel_macro,pr_auc_macro
+0.9966,0.9907,0.8926,0.997,0.8481,0.9907,0.8897

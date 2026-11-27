@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDS · Test du modèle</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <div class="fond" aria-hidden="true"></div>
+
+  <main class="app">
+    <header class="header">
+      <div class="header__logo">IDS</div>
+      <div class="header__titre">
+        <h1>Test du détecteur d'intrusions</h1>
+        <p>Modèle XGBoost multi-classes · CIC-IDS2017</p>
+      </div>
+      <div class="header__etat"><span class="point"></span> Modèle chargé</div>
+    </header>
+
+    <section class="intro">
+      <p>
+        Saisissez les statistiques d'un flux réseau. L'interface envoie les
+        <strong>15 valeurs</strong> au modèle entraîné et affiche la famille
+        prédite avec ses probabilités.
+      </p>
+    </section>
+
+    <div class="grille">
+      <section class="carte carte--formulaire">
+        <div class="carte__tete">
+          <div>
+            <h2>Caractéristiques du flux</h2>
+            <p id="meta">Chargement des champs…</p>
+          </div>
+          <button type="button" class="bouton bouton--secondaire" id="defaut">
+            Valeurs moyennes
+          </button>
+        </div>
+
+        <form id="formulaire">
+          <div id="champs"></div>
+          <div class="actions">
+            <button type="submit" class="bouton bouton--primaire">Analyser le flux</button>
+            <button type="button" class="bouton bouton--fantome" id="effacer">Effacer</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="carte carte--resultat">
+        <div class="carte__tete">
+          <div>
+            <h2>Résultat</h2>
+            <p>Prédiction du modèle</p>
+          </div>
+        </div>
+
+        <div id="resultat" class="resultat">
+          <div class="vide">
+            <div class="vide__icone">◎</div>
+            <p>En attente d'un flux…</p>
+            <span>Lancez une analyse pour voir la prédiction.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="pied">
+      <span>Interface de démonstration — aucun réentraînement, aucun fichier du projet modifié.</span>
+      <span id="version"></span>
+    </footer>
+  </main>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

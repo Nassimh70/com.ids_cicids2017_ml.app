@@ -12,8 +12,8 @@ questions possibles du jury.
 | 2. Prétraitement et déséquilibre | `02_pretraitement.py` | terminée |
 | 3. Sélection de variables | `03_selection.py` | terminée |
 | 4. Modèles et validation croisée | `04_modeles.py` | terminée |
-| 5. Évaluation sur le test | `05_evaluation.py` | à faire |
-| 6. Analyse critique et déploiement | `06_analyse.py` | à faire |
+| 5. Évaluation sur le test | `05_evaluation.py` | terminée |
+| 6. Analyse critique et déploiement | `06_analyse.py` | terminée |
 
 Le projet est volontairement plat : `config.py` plus un script par étape.
 Il n'y a pas de classes, ni de dossier `src/` avec dix modules.
@@ -132,6 +132,8 @@ python 01_exploration.py
 python 02_pretraitement.py
 python 03_selection.py
 python 04_modeles.py
+python 05_evaluation.py
+python 06_analyse.py
 ```
 
 Le script lit les 8 CSV, écrit `data/processed/sample_stratified_5pct.csv`, puis
@@ -490,3 +492,506 @@ Fichiers créés : `reports/tables/comparaison_modeles.csv`,
    lignes sont `BENIGN` : un modèle peut réussir sur la majorité et échouer sur
    les attaques rares. Le F1 macro donne un poids égal à chaque famille.
 
+---
+
+## Explication du code — étape 5
+
+`05_evaluation.py` utilise le modèle et l'encodeur sauvegardés à l'étape 4.
+Le jeu `test.csv` n'a jamais servi à choisir un modèle ou un réglage : il est
+utilisé **une seule fois**, à la toute fin.
+
+1. **Chargement** : on reprend les 15 colonnes de `selected_features.txt`, le
+   pipeline `final_model.joblib` et `label_encoder.joblib`. Le pipeline ne
+   contient pas de SMOTE : l'échantillonnage n'agit donc pas à la prédiction.
+2. **Prédiction** : `predict` donne les familles codées, `predict_proba` donne
+   les probabilités nécessaires au PR-AUC. `inverse_transform` redonne les noms
+   de familles lisibles.
+3. **Métriques globales** : accuracy, balanced accuracy, F1 macro et pondéré,
+   précision et rappel macro, PR-AUC macro avec la même petite fonction que
+   l'étape 4.
+4. **Rapport par famille** : `classification_report` donne précision, rappel,
+   F1 et support pour chaque attaque. Le support rappelle que certaines classes
+   n'ont que 19 ou 22 exemples : leur F1 est donc fragile.
+5. **Matrice de confusion** : les familles sont remises dans l'ordre du projet
+   (`FAMILY_ORDER`) pour une lecture plus simple. Les lignes sont les vraies
+   familles, les colonnes les familles prédites.
+6. **Erreurs** : les 93 lignes mal classées sont sauvegardées avec leur
+   probabilité de prédiction. Elles alimenteront l'analyse critique de l'étape 6.
+
+### Résultats réels de l'étape 5
+
+| Métrique | Valeur sur le test |
+|---|---:|
+| Accuracy | 0,9966 |
+| Accuracy équilibrée | 0,9907 |
+| **F1 macro** | **0,8926** |
+| F1 pondéré | 0,9970 |
+| Précision macro | 0,8481 |
+| Rappel macro | 0,9907 |
+| PR-AUC macro | 0,8897 |
+
+| Famille | Précision | Rappel | F1 | Support |
+|---|---:|---:|---:|---:|
+| BENIGN | 0,9993 | 0,9967 | 0,9980 | 22 238 |
+| Bot | 0,5806 | 0,9474 | 0,7200 | 19 |
+| BruteForce | 1,0000 | 1,0000 | 1,0000 | 110 |
+| DDoS | 0,9992 | 1,0000 | 0,9996 | 1 280 |
+| DoS | 0,9920 | 0,9925 | 0,9923 | 2 010 |
+| PortScan | 0,9928 | 0,9980 | 0,9954 | 1 518 |
+| WebAttack | 0,3729 | 1,0000 | 0,5432 | 22 |
+
+Comparaison avec la CV de l'étape 4 :
+
+| Jeu | F1 macro | PR-AUC macro |
+|---|---:|---:|
+| CV 5 folds (train) | 0,8714 | 0,8798 |
+| Test intact | 0,8926 | 0,8897 |
+
+Le test est un peu meilleur que la CV (+0,0212 de F1 macro). Ce n'est pas une
+fuite : en CV, chaque modèle est entraîné sur 4/5 du train (environ 87 000
+lignes), alors que le modèle final a vu les 108 788 lignes du train. Avec plus
+de données, il généralise légèrement mieux.
+
+**93 erreurs sur 27 197 flux, soit 0,34 %.** Les principales confusions sont :
+
+| Famille réelle | Famille prédite | Nombre |
+|---|---|---:|
+| BENIGN | WebAttack | 37 |
+| BENIGN | DoS | 14 |
+| DoS | BENIGN | 13 |
+| BENIGN | Bot | 13 |
+| BENIGN | PortScan | 9 |
+
+Le point important pour l'exploitation : `WebAttack` et `Bot` ont un rappel
+parfait mais une faible précision (0,37 et 0,58). Le modèle détecte toutes les
+attaques de ces familles, mais il déclenche aussi de fausses alertes sur du
+trafic normal. Avec seulement 22 et 19 exemples en test, ces précisions sont
+très sensibles à quelques erreurs.
+
+Fichiers créés : `reports/tables/metriques_test.csv`,
+`rapport_classification.csv`, `comparaison_test_cv.csv`, `erreurs_test.csv`,
+et `reports/figures/matrice_confusion_test.png`, `f1_par_famille_test.png`.
+
+## Cinq questions du jury — étape 5
+
+1. **Pourquoi le test n'a-t-il été utilisé qu'une fois ?** Si on l'utilisait
+   pour changer les hyperparamètres, il deviendrait un jeu de validation et le
+   score final serait optimiste. On l'a gardé pour la dernière mesure.
+2. **Pourquoi le F1 macro du test (0,8926) est-il au-dessus de la CV (0,8714)
+   ?** Le modèle final est entraîné sur tout le train, contre 4/5 en CV. Plus
+   de données d'entraînement donnent un léger gain, et l'écart reste dans la
+   variation habituelle des folds.
+3. **Pourquoi la précision de `WebAttack` n'est que de 0,37 ?** Sur 22
+   attaques, toutes sont trouvées, mais 37 flux `BENIGN` sont aussi étiquetés
+   `WebAttack`. C'est un coût opérationnel : trop de fausses alertes.
+4. **Faut-il être satisfait de 0,9966 d'accuracy ?** Non. Elle est portée par
+   BENIGN (82 % des lignes). Le F1 macro de 0,8926 et la précision macro de
+   0,8481 donnent une image plus honnête.
+5. **Que faire des 93 erreurs ?** On les a sauvegardées avec leur probabilité.
+   L'étape 6 va regarder si elles viennent de familles rares, de ressemblances
+   entre attaques ou d'un biais du dataset, sans modifier le modèle.
+
+---
+
+## Explication du code — étape 6
+
+`06_analyse.py` ne réentraîne rien et ne touche plus au test pour choisir quoi
+que ce soit. Il reorganise les résultats déjà produits et écrit un rapport
+final lisible.
+
+1. **Synthèse par famille** : on reprend `rapport_classification.csv`, on
+   enlève les lignes `macro avg` et `weighted avg`, puis on trie par F1
+   croissant. Cela fait apparaître immédiatement les familles faibles.
+2. **Confusions** : `erreurs_test.csv` est regroupé par paire
+   (famille réelle → famille prédite) pour compter les erreurs les plus
+   fréquentes.
+3. **Familles absentes** : `attaques_rares.csv` donne 36 `Infiltration` et
+   11 `Heartbleed`, exclues du modèle faute d'exemples suffisants. Le rapport
+   rappelle que le système est aveugle à ces deux menaces.
+4. **Temps d'inférence** : on mesure `predict` sur 27 093 flux du **train**
+   (pas sur le test) : **0,0962 ms par flux**, soit 2,607 s au total. C'est une
+   mesure locale, à confirmer sur le matériel de production.
+5. **Figures** : `analyse_f1_support.png` montre le lien entre le F1 et le
+   nombre d'exemples ; `analyse_erreurs.png` montre les huit confusions les
+   plus fréquentes.
+6. **Rapport** : `docs/RAPPORT_FINAL.md` rassemble les métriques, les forces,
+   les biais, l'analyse des erreurs et une proposition de déploiement sous
+   forme de schéma texte (SPAN/TAP → CICFlowMeter → pipeline → alerte → SOC).
+
+La proposition reste prudente : mode observation d'abord, seuil de confiance à
+calibrer sur le trafic réel, supervision humaine, et réentraînement avec un jeu
+de test séparé.
+
+### Résultats réels de l'étape 6
+
+- F1 macro final : 0,8926 ; PR-AUC macro : 0,8897 ; rappel macro : 0,9907.
+- 93 erreurs sur 27 197 flux (0,34 %).
+- Première confusion : `BENIGN → WebAttack` (37 cas), puis `BENIGN → DoS`
+  (14), `DoS → BENIGN` (13) et `BENIGN → Bot` (13).
+- Précision de `WebAttack` : 0,3729 ; de `Bot` : 0,5806. Le rappel de ces deux
+  familles est de 1,0000.
+- Familles non couvertes : Infiltration (36) et Heartbleed (11).
+- Inférence mesurée : 0,0962 ms par flux sur 27 093 flux du train.
+
+Fichiers créés : `docs/RAPPORT_FINAL.md`,
+`reports/tables/analyse_par_classe.csv`, `erreurs_resume.csv`,
+`familles_rares.csv`, `temps_inference.csv`, et
+`reports/figures/analyse_f1_support.png`, `analyse_erreurs.png`.
+
+## Cinq questions du jury — étape 6
+
+1. **Quel est le principal défaut du modèle ?** Ce n'est pas le rappel, qui est
+   de 0,9907, mais la précision sur les familles rares : WebAttack 0,3729 et
+   Bot 0,5806. En production cela donne des fausses alertes.
+2. **Pourquoi ne pas déployer en blocage automatique ?** Parce que le modèle a
+   été entraîné sur des attaques de laboratoire de 2017 et qu'il se trompe sur
+   du trafic normal. On propose d'abord un mode observation avec validation
+   humaine.
+3. **Que manque-t-il pour couvrir toutes les attaques ?** Des exemples pour
+   Infiltration et Heartbleed. Avec 36 et 11 lignes, on ne peut ni apprendre
+   ni évaluer correctement ces familles ; elles ont été mises de côté.
+4. **Le temps d'inférence de 0,0962 ms prouve-t-il que le système tiendra la
+   charge ?** Non. C'est une mesure sur un PC, sur un lot de flux déjà
+   extraits. Il faut tester la capture CICFlowMeter, le réseau et le SIEM en
+   conditions réelles.
+5. **Quelle est la limite la plus importante à annoncer ?** Le jeu de données
+   est ancien, déséquilibré et ne contient pas de charge utile. Le modèle est
+   un outil d'aide au tri des alertes, pas une garantie de sécurité.
+
+
+---
+
+# Version Jupyter — notebooks `.ipynb`
+
+Cette partie est la transposition du projet dans `notebooks/`. Les scripts
+`01_exploration.py` à `06_analyse.py`, `config.py` et `app_gui/` ne sont pas
+modifiés. Il y aura un notebook par étape, avec la même graine 42 et les mêmes
+chemins de sortie.
+
+## Étape 1 — `notebooks/01_exploration.ipynb`
+
+### Explication du code
+
+1. **Préparation du dossier** : `Path.cwd()` remonte jusqu'à `config.py`, puis
+   `os.chdir()`. Jupyter n'a pas de variable `__file__` : sans cette cellule,
+   l'import de `config` dépendrait du dossier d'ouverture du notebook.
+2. **Imports** : `%matplotlib inline` garde les figures dans le notebook ;
+   `config.py` donne la graine, les chemins et le dictionnaire des familles.
+3. **Fonctions** : `charger_csv()`, `echantillonner()`, `sauvegarder_table()`
+   et `sauvegarder_figure()` reprennent le script étape par étape, sans classe,
+   sans type hint et sans décorateur.
+4. **Cellules linéaires** : nettoyage des libellés, échantillon à 5 %, table de
+   distribution, contrôle qualité, boîtes par famille, histogrammes log et
+   corrélations fortes.
+5. **Affichage puis sauvegarde** : chaque figure est montrée par `plt.show()`
+   avant d'être écrite dans `reports/figures/` ; les tableaux vont dans
+   `reports/tables/`. L'ordre évite de fermer la figure avant de l'afficher.
+6. **Seules différences avec le script** : la cellule de dossier et la magie
+   `inline`. Le calcul, lui, est identique.
+
+### Résultats réels de l'étape 1 (version Jupyter)
+
+- Notebook créé : 22 cellules, dont 14 cellules de code.
+- Vérification effectuée : JSON conforme au format `nbformat` 4.5,
+  identifiants de cellules uniques, toutes les cellules compilent, imports et
+  graine 42 confirmés par exécution des cellules de préparation.
+- Les résultats attendus restent ceux du script : 2 830 743 lignes brutes,
+  141 581 lignes échantillonnées, 80,28 % de `BENIGN`, 3,92 % de doublons,
+  162 valeurs infinies, 8 colonnes constantes et 48 paires corrélées.
+- Aucun chiffre n'a été recalculé à la main ni inventé : le notebook réécrit
+  exactement les mêmes fichiers de `reports/`.
+
+### Cinq questions du jury — version Jupyter, étape 1
+
+1. **Pourquoi la cellule avec `os.chdir()` ?** Parce que Jupyter lance le
+   noyau dans le dossier du notebook (`notebooks/`), alors que `config.py` est
+   à la racine. Remonter jusqu'à ce fichier rend le notebook exécutable
+   quel que soit le dossier de départ.
+2. **Le notebook modifie-t-il les scripts du projet ?** Non. Il lit les mêmes
+   données et écrit dans les mêmes dossiers de résultats, mais il ne touche
+   ni aux scripts 1 à 6 ni à `app_gui/`.
+3. **Pourquoi conserver les familles de 100 lignes ou moins ?** Parce qu'un
+   échantillon de 5 % les réduirait à une ou deux lignes. Les garder entièrement
+   permet de les étudier, même si elles sont ensuite exclues du modèle supervisé.
+4. **Pourquoi la distribution des classes est-elle en échelle log ?** Parce que
+   `BENIGN` représente 80,28 % du trafic : en échelle linéaire, les familles
+   minoritaires seraient invisibles.
+5. **Comment prouver que les résultats sont identiques au script ?** En
+   comparant les fichiers générés dans `reports/tables/` et
+   `reports/figures/`, et en vérifiant que la graine et les constantes importées
+   du notebook sont bien les mêmes (42, 0,05, `sample_stratified_5pct.csv`).
+
+
+## Étape 2 — `notebooks/02_pretraitement.ipynb`
+
+### Explication du code
+
+1. **Préparation** : même cellule que dans le notebook 1, avec `os.chdir()`
+   vers la racine du projet et import de `config.py`.
+2. **Imports** : `%matplotlib inline`, `time`, `numpy`, `pandas`,
+   `imblearn` (pipeline, `SMOTE`, `RandomUnderSampler`) et `sklearn`. Rien n'est
+   enveloppé dans une classe.
+3. **Nettoyage** : suppression des colonnes de `RISKY_COLUMNS`, des colonnes
+   constantes, puis transformation des valeurs infinies en `NaN`.
+4. **Déduplication** : elle arrive avant le split, avec la même liste de
+   colonnes numériques que le script. Les lignes des familles rares sont
+   écrites dans `attaques_rares.csv`.
+5. **Split** : `train_test_split` stratifié 80/20, graine 42. Les fichiers
+   `train.csv` et `test.csv` sont réécrits à l'identique, et la table
+   `resume_pretraitement.csv` retrace les effectifs.
+6. **Comparaison** : trois pipelines `imblearn` évalués par
+   `cross_validate` à 5 folds sur le train. Le dictionnaire `cible_smote`
+   donne à chaque classe minoritaire un effectif voulu. Le test n'apparaît
+   dans aucune cellule de cette étape.
+
+### Résultats réels de l'étape 2 (version Jupyter)
+
+- Notebook créé : 17 cellules, dont 10 cellules de code.
+- Vérification effectuée : JSON `nbformat` 4.5 valide, identifiants uniques,
+  toutes les cellules compilent, imports de `config` confirmés (graine 42,
+  `RISKY_COLUMNS`, `RARE_FAMILIES`, `SAMPLE_FILE`).
+- Effectifs attendus : 141 581 au départ, 5 549 doublons supprimés, 47 lignes
+  rares, train 108 788 / test 27 197.
+- F1 macro attendu en CV 5 folds : `class_weight` 0,5616 (± 0,0019),
+  sous-échantillonnage 0,6395 (± 0,0106), SMOTE 0,6544 (± 0,0079).
+- Aucune métrique n'a été calculée sur le test ici.
+
+### Cinq questions du jury — version Jupyter, étape 2
+
+1. **Pourquoi dédupliquer avant le split ?** Une ligne dupliquée pourrait être
+   à la fois dans le train et dans le test, ce qui gonflerait les scores sans
+   refléter une vraie généralisation.
+2. **Pourquoi mettre les valeurs infinies en `NaN` au lieu de les supprimer ?**
+   Elles viennent de débits calculés sur des flux très courts. Le `NaN` est
+   imputé par la médiane dans le pipeline, donc seulement avec les données du
+   fold d'entraînement.
+3. **Pourquoi exclure Infiltration et Heartbleed ?** Il n'y en a que 36 et 11.
+   Le modèle ne peut pas apprendre une classe avec si peu d'exemples, et le
+   test ne pourrait pas la mesurer correctement.
+4. **Pourquoi le sampleur est-il dans le pipeline et pas appliqué avant ?** Si
+   on rééchantillonnait tout le train avant la CV, les folds de validation
+   contiendraient des points synthétiques SMOTE : les scores seraient biaisés.
+5. **Pourquoi comparer F1 macro et accuracy ?** Avec 80 % de `BENIGN`, une
+   accuracy de 0,84 est possible alors que le F1 macro n'est que de 0,5616.
+   Le F1 macro montre les fautes sur les petites familles.
+
+
+## Étape 3 — `notebooks/03_selection.ipynb`
+
+### Explication du code
+
+1. **Préparation et imports** : même ouverture que les notebooks précédents.
+   On ajoute `f_classif`, `SelectKBest`, `SelectFromModel`,
+   `VarianceThreshold` et le dictionnaire `SIGNIFICATION` qui traduit chaque
+   variable en langage réseau.
+2. **Fonction `modele()`** : elle construit la même forêt fixe (60 arbres,
+   profondeur 12, `class_weight="balanced_subsample"`, graine 42) pour les
+   importances et pour noter les sélections. C'est une fonction simple, pas une
+   classe.
+3. **Redondance** : corrélation absolue calculée sur le train imputé ; les
+   paires au-dessus de 0,95 sont sauvegardées dans `correlations_train.csv`.
+4. **Deux classements** : score ANOVA et importance forêt, mis dans un même
+   tableau avec les rangs et la signification de chaque variable.
+5. **Courbe F1** : 6 valeurs de `k` × 2 méthodes, chacune dans un pipeline
+   évalué en CV 3 folds. `VarianceThreshold` enlève d'abord les variables sans
+   variation, puis le sélecteur choisit ses `k` variables sur le fold courant.
+6. **Contrôle puis choix** : comparaison avec et sans `Destination Port`,
+   puis réentraînement d'une forêt sans le port pour écrire les 15 noms dans
+   `selected_features.txt` et la table `selection_finale.csv`.
+
+### Résultats réels de l'étape 3 (version Jupyter)
+
+- Notebook créé : 16 cellules, dont 9 cellules de code.
+- Vérification effectuée : JSON `nbformat` 4.5 valide, identifiants uniques,
+  toutes les cellules compilent, imports et graine 42 confirmés.
+- 48 paires corrélées à plus de 0,95 sur le train.
+- À 15 variables : ANOVA 0,6334 (± 0,0087), Random Forest 0,8153 (± 0,0222).
+- À 70 variables : 0,8689 pour les deux méthodes.
+- `Destination Port` : 0,8153 avec, 0,8398 sans. Il est exclu.
+- Liste finale : 15 variables, sauvegardées dans
+  `data/processed/selected_features.txt`. Le test n'a pas été utilisé.
+
+### Cinq questions du jury — version Jupyter, étape 3
+
+1. **Pourquoi la sélection est-elle dans le pipeline ?** Si on choisissait les
+   variables sur tout le train avant la CV, chaque fold de validation verrait
+   des variables choisies grâce à ses propres données : le score serait trop
+   optimiste.
+2. **Pourquoi la forêt bat-elle l'ANOVA à 15 variables ?** L'ANOVA regarde
+   chaque variable séparément ; la forêt capte les effets combinés, par
+   exemple la taille moyenne des paquets avec sa variance.
+3. **Pourquoi ne pas prendre 70 variables puisque le F1 est plus haut ?** Le
+   gain est d'environ 0,029, au prix d'un modèle plus lourd et d'un risque de
+   biais de service. Pour un déploiement, 15 variables suffisent et sont plus
+   faciles à expliquer.
+4. **Pourquoi retirer `Destination Port` si le score baisse avec lui ?** C'est
+   l'inverse : le score **monte** sans lui (0,8398 contre 0,8153). Le port
+   servait de raccourci vers le service attaqué, ce qui ne généraliserait pas.
+5. **À quoi sert la colonne `signification` ?** À rendre le résultat
+   compréhensible pour un jury ou un SOC : on peut dire que le modèle regarde
+   la fenêtre TCP initiale ou la taille des paquets, et pas seulement un nom
+   de colonne.
+
+
+## Étape 4 — `notebooks/04_modeles.ipynb`
+
+### Explication du code
+
+1. **Ouverture et imports** : même cellule de dossier que les notebooks
+   précédents, plus `joblib`, `imblearn`, `xgboost` et les métriques
+   `sklearn`. Deux fonctions simples sont définies : `pr_auc_macro()` et
+   `construire_pipeline()`.
+2. **PR-AUC maison** : `make_scorer` appelle `pr_auc_macro` avec
+   `response_method="predict_proba"`. On calcule l'aire précision-rappel de
+   chaque classe, puis la moyenne.
+3. **Pipeline** : imputation médiane → `StandardScaler` → SMOTE → modèle.
+   SMOTE reste dedans pendant la CV, donc il ne voit jamais le fold de
+   validation.
+4. **Encodage** : `LabelEncoder` transforme les 7 familles en entiers et est
+   sauvegardé dans `models/label_encoder.joblib`.
+5. **Comparaison puis réglage** : cinq modèles en CV 5 folds, puis
+   `RandomizedSearchCV` (4 tirages, CV 3 folds) sur les deux premiers, puis
+   réévaluation avec la CV initiale pour comparer réglés et non réglés.
+6. **Sauvegarde** : le meilleur réglé est entraîné sur tout le train. On copie
+   ses étapes `imputation`, `scaling` et `modele` dans un pipeline `sklearn`
+   sans SMOTE, puis on écrit `models/final_model.joblib`.
+
+### Résultats réels de l'étape 4 (version Jupyter)
+
+- Notebook créé : 16 cellules, dont 9 cellules de code.
+- Vérification effectuée : JSON `nbformat` 4.5 valide, identifiants uniques,
+  toutes les cellules compilent, imports et graine 42 confirmés.
+- F1 macro CV 5 folds : XGBoost 0,8737 (± 0,0165), Random Forest 0,8693
+  (± 0,0088), arbre 0,8454, kNN 0,8204, régression logistique 0,4066.
+- Les intervalles de XGBoost et Random Forest se chevauchent.
+- Après réglage : XGBoost 0,8714, Random Forest 0,8693.
+- Paramètres retenus pour XGBoost : 250 arbres, profondeur 4,
+  `learning_rate = 0,05`.
+- Modèle final : `models/final_model.joblib`, sans SMOTE. Le test n'a pas été
+  utilisé.
+
+### Cinq questions du jury — version Jupyter, étape 4
+
+1. **Pourquoi SMOTE reste-t-il dans le pipeline pendant la CV ?** Parce qu'il
+   doit être appliqué seulement aux données d'entraînement de chaque fold.
+   Sinon les données synthétiques fuiraient dans le fold de validation.
+2. **Pourquoi le F1 pondéré est-il presque égal à 1 alors que le F1 macro est
+   à 0,87 ?** Le F1 pondéré suit les effectifs : `BENIGN` domine. Le F1 macro
+   donne le même poids aux 7 familles et montre les difficultés réelles.
+3. **Peut-on affirmer que XGBoost est meilleur que Random Forest ?** Non. Les
+   écarts-types se chevauchent (0,8737 ± 0,0165 contre 0,8693 ± 0,0088). On
+   choisit XGBoost pour le F1 moyen, pas pour une différence prouvée.
+4. **Pourquoi retirer SMOTE du modèle sauvegardé ?** SMOTE sert à entraîner,
+   pas à prédire. Le garder ferait générer des voisins artificiels à chaque
+   inférence, ce qui n'a aucun sens pour un flux réel.
+5. **Pourquoi réévaluer après le réglage avec la même CV ?** Pour comparer des
+   résultats comparables. Changer le nombre de folds ou la graine en cours de
+   route rendrait la comparaison invalide.
+
+
+## Étape 5 — `notebooks/05_evaluation.ipynb`
+
+### Explication du code
+
+1. **Ouverture et imports** : même cellule de dossier, puis `joblib`, les
+   métriques `sklearn` et `FAMILY_ORDER`. La fonction `pr_auc_macro()` est
+   recopiée de l'étape 4 pour que le calcul soit identique.
+2. **Chargement unique** : `test.csv`, `final_model.joblib` et
+   `label_encoder.joblib`. `predict` et `predict_proba` sont appelés une seule
+   fois chacun.
+3. **Métriques globales** : un seul dictionnaire avec accuracy, accuracy
+   équilibrée, F1 macro et pondéré, précision, rappel et PR-AUC macro.
+4. **Rapport par famille** : `classification_report` converti en tableau ;
+   les lignes `macro avg` et `weighted avg` sont gardées pour la lisibilité.
+5. **Comparaison CV / test** : lecture de `comparaison_apres_reglage.csv`,
+   sans recalculer la CV. Les deux jeux sont mis côte à côte.
+6. **Figures et erreurs** : matrice de confusion ordonnée selon
+   `FAMILY_ORDER`, barres du F1 par famille, puis sauvegarde des 93 erreurs
+   avec leur confiance pour l'étape 6.
+
+### Résultats réels de l'étape 5 (version Jupyter)
+
+- Notebook créé : 19 cellules, dont 10 cellules de code.
+- Vérification effectuée : JSON `nbformat` 4.5 valide, identifiants uniques,
+  toutes les cellules compilent, imports de `config` confirmés (chemins et
+  `FAMILY_ORDER`).
+- 27 197 flux de test, 15 variables, 7 familles.
+- F1 macro 0,8926, PR-AUC macro 0,8897, accuracy 0,9966,
+  accuracy équilibrée 0,9907, précision macro 0,8481, rappel macro 0,9907.
+- CV 0,8714 contre test 0,8926 : le modèle final a vu tout le train.
+- 93 erreurs sauvegardées dans `reports/tables/erreurs_test.csv`.
+- Le notebook n'a pas été exécuté ici afin de préserver l'unicité de
+  l'évaluation sur le test ; les chiffres sont ceux déjà mesurés par le script.
+
+### Cinq questions du jury — version Jupyter, étape 5
+
+1. **Pourquoi le test est-il utilisé une seule fois ?** Si on l'utilisait
+   pour ajuster les paramètres, il deviendrait un jeu d'entraînement déguisé
+   et le score final serait optimiste.
+2. **L'accuracy de 0,9966 est-elle un bon résultat ?** Elle est portée par les
+   22 238 flux `BENIGN`. Le F1 macro de 0,8926 est le bon indicateur, car il
+   donne le même poids aux 7 familles.
+3. **Pourquoi le test dépasse-t-il la CV de 0,0212 ?** En CV, chaque fold
+   n'entraîne sur 4/5 du train. Le modèle final a été entraîné sur la totalité
+   du train avant d'être évalué sur le test.
+4. **Quel est le point faible révélé par le rapport par famille ?** La
+   précision : `WebAttack` 0,3729 et `Bot` 0,5806. Le rappel de ces familles
+   est pourtant de 1,0000, donc le modèle génère des fausses alertes.
+5. **À quoi servent les 93 erreurs sauvegardées ?** À l'analyse critique de
+   l'étape 6 : on regarde quelles confusions reviennent le plus souvent, sans
+   retourner choisir un autre modèle sur le test.
+
+
+## Étape 6 — `notebooks/06_analyse.ipynb`
+
+### Explication du code
+
+1. **Ouverture et lectures** : même cellule de dossier, puis lecture des
+   tables produites à l'étape 5, de `attaques_rares.csv` et de la liste des 15
+   variables. Aucun modèle n'est réentraîné ni réévalué sur le test.
+2. **Synthèse par famille** : suppression des lignes de moyenne, tri par F1
+   croissant, écriture dans `analyse_par_classe.csv`.
+3. **Confusions** : regroupement des erreurs par paire réelle → prédite, avec
+   `erreurs_resume.csv`. Les effectifs d'Infiltration et Heartbleed sont
+   comptés dans `familles_rares.csv`.
+4. **Temps d'inférence** : mesure de `predict` sur 27 093 flux du **train**,
+   jamais sur le test. Le résultat est écrit dans `temps_inference.csv`.
+5. **Figures** : nuage F1/support en échelle log et barres des huit principales
+   confusions, sauvegardés dans `reports/figures/`.
+6. **Rapport** : une chaîne f-formatée reprend les valeurs lues dans les
+   tableaux pour écrire `docs/RAPPORT_FINAL.md`. Les chiffres ne sont pas
+   recopiés à la main, ce qui évite les incohérences.
+
+### Résultats réels de l'étape 6 (version Jupyter)
+
+- Notebook créé : 16 cellules, dont 9 cellules de code.
+- Vérification effectuée : JSON `nbformat` 4.5 valide, identifiants uniques,
+  toutes les cellules compilent. Les cellules de lecture ont été exécutées :
+  93 erreurs effectivement chargées depuis `erreurs_test.csv`.
+- F1 macro 0,8926, PR-AUC macro 0,8897, rappel macro 0,9907.
+- 93 erreurs sur 27 197 flux (0,34 %).
+- Première confusion : `BENIGN -> WebAttack` (37), puis `BENIGN -> DoS` (14),
+  `DoS -> BENIGN` (13), `BENIGN -> Bot` (13).
+- Précision `WebAttack` 0,3729 et `Bot` 0,5806 ; Infiltration 36 et
+  Heartbleed 11 lignes exclues.
+- Inférence : 0,0962 ms par flux sur 27 093 flux du train.
+- Rapport complet dans `docs/RAPPORT_FINAL.md`.
+
+### Cinq questions du jury — version Jupyter, étape 6
+
+1. **Pourquoi mesurer l'inférence sur le train et pas sur le test ?** Le test
+   a déjà servi à l'évaluation finale. Le train fournit un volume équivalent
+   sans réutiliser le test pour une nouvelle décision.
+2. **Pourquoi le rapport est-il généré par une chaîne formatée ?** Pour que
+   chaque nombre vienne des fichiers de résultats. Si une métrique change, le
+   rapport suit automatiquement, sans risque de copie obsolète.
+3. **Que montre la relation entre F1 et support ?** Les familles avec peu
+   d'exemples en test (Bot 19, WebAttack 22) ont un F1 instable : quelques
+   erreurs suffisent à le faire chuter.
+4. **Pourquoi proposer le mode observation avant le blocage ?** Le modèle
+   confond encore du trafic normal avec WebAttack ou Bot. Un seuil calibré sur
+   le trafic réel et une validation humaine sont nécessaires avant de bloquer.
+5. **La version Jupyter change-t-elle les conclusions ?** Non. Les six
+   notebooks reprennent exactement les calculs des scripts et écrivent les
+   mêmes fichiers. Ils changent seulement la façon de lire et d'exécuter le
+   projet, pas ses résultats.

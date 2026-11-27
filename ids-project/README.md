@@ -22,6 +22,7 @@ pip install -r requirements.txt
 python 01_exploration.py      # étape 1
 python 02_pretraitement.py    # étape 2
 python 03_selection.py        # étape 3
+python 04_modeles.py          # étape 4
 ...
 ```
 
@@ -71,3 +72,17 @@ ids-project/
   0,8153 à 0,8398 (biais de service).
 - Liste finale dans `data/processed/selected_features.txt`, courbe dans
   `reports/figures/courbe_selection.png`.
+
+## Résultat de l'étape 4
+
+- Cinq modèles comparés en CV 5 folds avec SMOTE dans le pipeline :
+  XGBoost 0,8737 de F1 macro, Random Forest 0,8693, arbre 0,8454, kNN 0,8204,
+  régression logistique 0,4066. Le F1 pondéré de 0,996 est trompeur à cause de
+  la majorité `BENIGN`.
+- Les écarts-types de XGBoost et Random Forest se chevauchent : l'écart n'est
+  pas nettement significatif.
+- Petit réglage (`RandomizedSearchCV`) puis réévaluation à 5 folds : XGBoost
+  réglé 0,8714, Random Forest réglé 0,8693. XGBoost réglé est sauvegardé dans
+  `models/final_model.joblib` (SMOTE retiré pour l'inférence), avec
+  `models/label_encoder.joblib`.
+- Le test reste intact jusqu'à l'étape 5.

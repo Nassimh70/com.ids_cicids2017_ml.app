@@ -11,7 +11,7 @@ questions possibles du jury.
 | 1. Exploration | `01_exploration.py` | terminée |
 | 2. Prétraitement et déséquilibre | `02_pretraitement.py` | terminée |
 | 3. Sélection de variables | `03_selection.py` | terminée |
-| 4. Modèles et validation croisée | `04_modeles.py` | à faire |
+| 4. Modèles et validation croisée | `04_modeles.py` | terminée |
 | 5. Évaluation sur le test | `05_evaluation.py` | à faire |
 | 6. Analyse critique et déploiement | `06_analyse.py` | à faire |
 
@@ -131,6 +131,7 @@ pip install -r requirements.txt
 python 01_exploration.py
 python 02_pretraitement.py
 python 03_selection.py
+python 04_modeles.py
 ```
 
 Le script lit les 8 CSV, écrit `data/processed/sample_stratified_5pct.csv`, puis
@@ -402,4 +403,90 @@ Fichiers créés : `data/processed/selected_features.txt`,
 5. **Que prouve la courbe score / nombre de variables ?** Qu'au-delà de 15
    variables le gain est faible et instable (0,8153 à 15, 0,8124 à 25, 0,8079
    à 40), puis le score saute à 70 parce qu'on ne sélectionne plus rien.
+
+---
+
+## Explication du code — étape 4
+
+`04_modeles.py` utilise uniquement `train.csv` et les 15 variables choisies à
+l'étape 3.
+
+1. **Labels numériques** : `LabelEncoder` transforme les sept familles en
+   entiers, car XGBoost refuse les chaînes de caractères. L'encodeur est
+   sauvegardé dans `models/label_encoder.joblib` pour l'étape 5.
+2. **Cinq modèles** : Random Forest, XGBoost, régression logistique, arbre de
+   décision et kNN. Tous passent par le même pipeline : imputation → mise à
+   l'échelle → SMOTE → modèle. Le SMOTE est recalculé dans chaque fold, donc
+   il ne voit jamais le fold de validation.
+3. **Métriques** : `cross_validate` avec un `StratifiedKFold(5)`. On relève le
+   F1 macro, le F1 pondéré, le rappel macro, la précision macro et le PR-AUC
+   macro. Ce dernier est calculé par une petite fonction locale : on binarise
+   les labels, on trace la courbe précision-rappel de chaque classe avec
+   `precision_recall_curve`, on prend l'aire avec `auc`, puis la moyenne.
+4. **Significativité** : on compare `moyenne - écart-type` du premier à
+   `moyenne + écart-type` du deuxième. Si les intervalles se chevauchent, on ne
+   déclare pas de différence nette.
+5. **Réglage** : `RandomizedSearchCV` à 4 essais et CV à 3 folds sur les deux
+   meilleurs modèles. Les modèles réglés sont ensuite **réévalués avec la même
+   CV à 5 folds** que la comparaison initiale, pour ne pas mélanger des scores
+   obtenus sur des découpages différents.
+6. **Sauvegarde** : le meilleur modèle réglé est entraîné sur tout le train.
+   On retire le SMOTE de la chaîne avant de sauvegarder : l'échantillonnage ne
+   doit jamais agir au moment de prédire. Le modèle sert dans l'étape 5.
+
+### Résultats réels de l'étape 4
+
+| Modèle | F1 macro | F1 pondéré | Rappel macro | Précision macro | PR-AUC macro | Temps |
+|---|---:|---:|---:|---:|---:|---:|
+| Random Forest | 0,8693 ± 0,0088 | 0,9960 | 0,9503 | 0,8399 | 0,8678 | 65 s |
+| **XGBoost** | **0,8737 ± 0,0165** | **0,9966** | **0,9758** | 0,8368 | **0,8814** | 146 s |
+| Régression logistique | 0,4066 ± 0,0060 | 0,8602 | 0,4318 | 0,4073 | 0,5317 | 73 s |
+| Arbre de décision | 0,8454 ± 0,0128 | 0,9925 | 0,9589 | 0,8057 | 0,8501 | 8 s |
+| kNN | 0,8204 ± 0,0068 | 0,9926 | 0,9249 | 0,7788 | 0,8392 | 40 s |
+
+- XGBoost est premier au F1 macro et au PR-AUC macro. Son rappel macro est
+  aussi le meilleur : 0,9758.
+- Les intervalles `0,8737 ± 0,0165` et `0,8693 ± 0,0088` se chevauchent :
+  l'écart avec Random Forest n'est **pas nettement significatif**.
+- Le F1 pondéré avoisine 0,996 pour les bons modèles. Ce chiffre est trompeur :
+  BENIGN représente 82 % du train. Le F1 macro reste notre référence.
+- La régression logistique rate plusieurs petites classes : sklearn émet un
+  avertissement « precision is ill-defined ». C'est cohérent avec son F1 macro
+  de 0,4066 malgré 0,86 de F1 pondéré.
+
+Réglage (CV à 3 folds) puis réévaluation (CV à 5 folds) :
+
+| Modèle | Meilleurs paramètres | F1 3 folds | F1 5 folds | PR-AUC 5 folds |
+|---|---|---:|---:|---:|
+| XGBoost | 250 arbres, profondeur 4, lr 0,05 | 0,8651 | **0,8714** ± 0,0105 | 0,8798 |
+| Random Forest | 200 arbres, profondeur 15, feuille 1 | 0,8654 | 0,8693 ± 0,0088 | 0,8678 |
+
+Le réglage n'a pas augmenté le score de XGBoost (0,8714 contre 0,8737 avant),
+mais l'écart reste dans l'écart-type et le modèle est plus simple (profondeur 4
+au lieu de 6). C'est cette version réglée qui est sauvegardée dans
+`models/final_model.joblib`, avec `models/label_encoder.joblib`.
+
+Fichiers créés : `reports/tables/comparaison_modeles.csv`,
+`meilleurs_parametres.csv`, `comparaison_apres_reglage.csv`,
+`meilleur_modele.csv`, `reports/figures/comparaison_modeles.png`,
+`models/final_model.joblib` et `models/label_encoder.joblib`.
+
+## Cinq questions du jury — étape 4
+
+1. **Pourquoi 5 folds et pas un simple split ?** Un seul split dépend trop de la
+   chance du découpage. Avec 5 folds, chaque ligne sert une fois à valider et
+   quatre fois à entraîner ; on obtient une moyenne et un écart-type.
+2. **Pourquoi le SMOTE reste-t-il dans le pipeline ?** Pour qu'il ne voie que
+   les données d'entraînement du fold en cours. Sans cela, des points
+   synthétiques fuiraient dans la validation et gonfleraient le score.
+3. **Pourquoi XGBoost plutôt que Random Forest ?** Son F1 macro (0,8737 contre
+   0,8693) et son PR-AUC (0,8814 contre 0,8678) sont un peu meilleurs, et son
+   rappel macro est plus élevé. On reste prudent car les écarts-types se
+   chevauchent.
+4. **Pourquoi ne pas conclure que XGBoost est nettement meilleur ?** Parce que
+   0,8737 ± 0,0165 recoupe 0,8693 ± 0,0088. La différence de 0,0044 est plus
+   petite que la variation entre folds.
+5. **Pourquoi le F1 pondéré de 0,996 ne prouve rien ?** Parce que 82 % des
+   lignes sont `BENIGN` : un modèle peut réussir sur la majorité et échouer sur
+   les attaques rares. Le F1 macro donne un poids égal à chaque famille.
 
